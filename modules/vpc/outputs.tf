@@ -13,3 +13,11 @@ output "subnet_id3" {
 output "subnet_id4" {
   value = aws_subnet.Sub4.id
 }
+
+output "bastion_sg_id" {
+  value = aws_security_group.bastion_sg.id
+}
+
+output "asg_template_id" {
+  value = aws_launch_template.web_asg.id
+}
