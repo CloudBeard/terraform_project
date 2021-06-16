@@ -1,7 +1,15 @@
-output "subnet_id" {
-  value = aws_subnet.this.id
+output "subnet_id1" {
+  value = aws_subnet.Sub1.id
 }
 
-output "ami_id" {
-  value = data.aws_ssm_parameter.this.value
+output "subnet_id2" {
+  value = aws_subnet.Sub2.id
+}
+
+output "subnet_id3" {
+  value = aws_subnet.Sub3.id
+}
+
+output "subnet_id4" {
+  value = aws_subnet.Sub4.id
 }
