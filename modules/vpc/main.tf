@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_vpc" "us-east-prod" {
-  cidr_block = "10.1.0.0/16"
+  cidr_block = var.vpc-cidr
   tags = {
     Name = "US_East_Prod"
   }
@@ -11,8 +11,8 @@ resource "aws_vpc" "us-east-prod" {
 
 resource "aws_subnet" "Sub1" {
   vpc_id     = aws_vpc.us-east-prod.id
-  cidr_block = "10.1.0.0/24"
-  availability_zone = "us-east-1a"
+  cidr_block = var.sub1-cidr
+  availability_zone = var.az1
   tags = {
     Name = "Sub1_Public"
   }
@@ -20,8 +20,8 @@ resource "aws_subnet" "Sub1" {
 
 resource "aws_subnet" "Sub2" {
   vpc_id     = aws_vpc.us-east-prod.id
-  cidr_block = "10.1.1.0/24"
-  availability_zone = "us-east-1b"
+  cidr_block = var.sub2-cidr
+  availability_zone = var.az2
   tags = {
     Name = "Sub2_Public"
   }
@@ -29,8 +29,8 @@ resource "aws_subnet" "Sub2" {
 
 resource "aws_subnet" "Sub3" {
   vpc_id     = aws_vpc.us-east-prod.id
-  cidr_block = "10.1.2.0/24"
-  availability_zone = "us-east-1a"
+  cidr_block = var.sub3-cidr
+  availability_zone = var.az1
   tags = {
     Name = "Sub3_Private"
   }
@@ -38,10 +38,10 @@ resource "aws_subnet" "Sub3" {
 
 resource "aws_subnet" "Sub4" {
   vpc_id     = aws_vpc.us-east-prod.id
-  cidr_block = "10.1.3.0/24"
-  availability_zone = "us-east-1b"
+  cidr_block = var.sub4-cidr
+  availability_zone = var.az2
   tags = {
-    "Sub4_Private"
+    Name = "Sub4_Private"
   }
 }
 
@@ -105,11 +105,6 @@ resource "aws_route_table" "private_rt" {
 
   route {
     cidr_block = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gateway.id
-  }
-
-  route {
-    ipv6_cidr_block = "::/0"
     nat_gateway_id = aws_nat_gateway.nat_gateway.id
   }
 
@@ -183,14 +178,14 @@ resource "aws_security_group" "bastion_sg" {
 resource "aws_security_group" "backend_web" {
   name = "backend_web"
   description = "Allows HTTP on port 80 from WebALBSG"
-  vpc_id = aws_vpc.us_east_prod.id
+  vpc_id = aws_vpc.us-east-prod.id
 
   ingress {
     description = "HTTP port 80 from WebALBSG"
     from_port = 80
     to_port = 80
     protocol = "tcp"
-    security_groups = aws_security_group.web_alb_sg.id
+    security_groups = ["${aws_security_group.web_alb_sg.id}"]
   }
 
   egress {
@@ -206,30 +201,98 @@ resource "aws_security_group" "backend_web" {
   }
 }
 
-resource "aws_launch_template" "web_asg" {
-    name = "web_asg"
-    image_id = "ami-0b0af3577fe5e3532"
-    instance_type = "t2.micro"
-    block_device_mappings {
-      device_name = "/dev/sda1"
-      ebs{
-        volume_size = 20
-      }
-    }
-    placement {
-      availability_zone = "us-east-1b"
-    }
-    vpc_security_group_ids = aws_security_group.backend_web.id
-    user_data = <<-EOF
-    #!//bin/bash -ex
-    dnf update -y
-    dnf install httpd
+resource "aws_lb" "web_alb" {
+  name = "web-alb"
+  internal = false 
+  load_balancer_type = "application"
+  security_groups = [aws_security_group.web_alb_sg.id]
+  subnets = [
+    aws_subnet.Sub1.id,
+    aws_subnet.Sub2.id
+  ]
+
+  tags = {
+    Enviroment = "Prod"
+  }
+}
+
+resource "aws_lb_target_group" "web_tg" {
+  name = "web-tg"
+  port = 80
+  protocol = "HTTP"
+  vpc_id = aws_vpc.us-east-prod.id
+}
+
+resource "aws_lb_listener" "alb-listner" {
+  load_balancer_arn = aws_lb.web_alb.id
+  port = "80"
+  protocol = "HTTP"
+
+  default_action {
+    type = "forward"
+    target_group_arn = aws_lb_target_group.web_tg.arn
+  }
+}
+
+resource "aws_autoscaling_attachment" "asg_attachment" {
+  autoscaling_group_name = aws_autoscaling_group.asg.name
+  alb_target_group_arn = aws_lb_target_group.web_tg.arn
+}
+
+resource "aws_launch_configuration" "web_asg" {
+  name = "webserver"
+  image_id = "ami-0b0af3577fe5e3532"
+  instance_type = "t2.micro"
+  security_groups = [aws_security_group.backend_web.id]
+  root_block_device {
+    volume_size = 20
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  user_data = <<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install httpd -y
     systemctl enable httpd
     systemctl start httpd
     echo "<h1>TEST WEB PAGE</h1>" > /var/www/html/index.html
     EOF
+}
 
-    tags = {
-      Name = "webASG"
-    }
+resource "aws_autoscaling_group" "asg" {
+  name = "web-backend-asg"
+  max_size = 6
+  min_size = 2
+  desired_capacity = 2
+  health_check_type = "EC2"
+  launch_configuration = aws_launch_configuration.web_asg.name
+  vpc_zone_identifier = [aws_subnet.Sub4.id]
+  target_group_arns = [aws_lb_target_group.web_tg.arn]
+  
+  lifecycle {
+    create_before_destroy = true
   }
+}
+
+resource "aws_instance" "Sub2_Instance" {
+  ami           = "ami-0b0af3577fe5e3532"
+  subnet_id     = aws_subnet.Sub2.id
+  instance_type = "t2.micro"
+  vpc_security_group_ids = [aws_security_group.bastion_sg.id]
+  key_name = var.key-pair
+  ebs_block_device {
+    device_name = "/dev/sda1"
+    volume_size = 20
+  }
+  tags = {
+    Name = "Bastion"
+  }
+}
+
+resource "aws_eip" "sub2_instance_eip" {
+  instance = aws_instance.Sub2_Instance.id
+  vpc = true
+}

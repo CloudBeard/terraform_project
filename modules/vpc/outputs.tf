@@ -18,6 +18,22 @@ output "bastion_sg_id" {
   value = aws_security_group.bastion_sg.id
 }
 
+output "web_alb_sg_id" {
+  value = aws_security_group.web_alb_sg.id
+}
+
 output "asg_template_id" {
-  value = aws_launch_template.web_asg.id
+  value = aws_launch_configuration.web_asg.id
+}
+
+output "backend_web_id" {
+  value = aws_security_group.backend_web.id
+}
+
+output "alb_id" {
+  value = aws_lb.web_alb.id
+}
+
+output "alb_arn" {
+  value = aws_lb.web_alb.arn
 }
