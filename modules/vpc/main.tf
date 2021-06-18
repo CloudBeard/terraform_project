@@ -113,12 +113,12 @@ resource "aws_route_table" "private_rt" {
   }
 }
 
-resource "aws_route_table_association" "public_sub3" {
+resource "aws_route_table_association" "private_sub3" {
   subnet_id = aws_subnet.Sub3.id
    route_table_id = aws_route_table.private_rt.id
 }
 
-resource "aws_route_table_association" "public_sub4" {
+resource "aws_route_table_association" "private_sub4" {
   subnet_id = aws_subnet.Sub4.id
    route_table_id = aws_route_table.private_rt.id
 }
